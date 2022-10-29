@@ -21,26 +21,28 @@ NIPs stand for **Nostr Implementation Possibilities**. They exist to document wh
 - [NIP-22: Event created_at Limits](22.md)
 - [NIP-25: Reactions](25.md)
 - [NIP-28: Public Chat](28.md)
+- [NIP-33: Parameterized Replaceable Events](33.md)
 
 ## Event Kinds
 
-| kind        | description                 | NIP                    |
-|-------------|-----------------------------|------------------------|
-| 0           | Metadata                    | [1](01.md), [5](05.md) |
-| 1           | Text                        | [1](01.md)             |
-| 2           | Recommend Relay             | [1](01.md)             |
-| 3           | Contacts                    | [2](02.md)             |
-| 4           | Encrypted Direct Messages   | [4](04.md)             |
-| 5           | Event Deletion              | [9](09.md)             |
-| 7           | Reaction                    | [25](25.md)            |
-| 40          | Channel Creation            | [28](28.md)            |
-| 41          | Channel Metadata            | [28](28.md)            |
-| 42          | Channel Message             | [28](28.md)            |
-| 43          | Channel Hide Message        | [28](28.md)            |
-| 44          | Channel Mute User           | [28](28.md)            |
-| 45-49       | Public Chat Reserved        | [28](28.md)            |
-| 10000-19999 | Replaceable Events Reserved | [16](16.md)            |
-| 20000-29999 | Ephemeral Events Reserved   | [16](16.md)            |
+| kind        | description                               | NIP                    |
+|-------------|-------------------------------------------|------------------------|
+| 0           | Metadata                                  | [1](01.md), [5](05.md) |
+| 1           | Text                                      | [1](01.md)             |
+| 2           | Recommend Relay                           | [1](01.md)             |
+| 3           | Contacts                                  | [2](02.md)             |
+| 4           | Encrypted Direct Messages                 | [4](04.md)             |
+| 5           | Event Deletion                            | [9](09.md)             |
+| 7           | Reaction                                  | [25](25.md)            |
+| 40          | Channel Creation                          | [28](28.md)            |
+| 41          | Channel Metadata                          | [28](28.md)            |
+| 42          | Channel Message                           | [28](28.md)            |
+| 43          | Channel Hide Message                      | [28](28.md)            |
+| 44          | Channel Mute User                         | [28](28.md)            |
+| 45-49       | Public Chat Reserved                      | [28](28.md)            |
+| 10000-19999 | Replaceable Events Reserved               | [16](16.md)            |
+| 20000-29999 | Ephemeral Events Reserved                 | [16](16.md)            |
+| 30000-39999 | Parameterized Replaceable Events Reserved | [33](33.md)            |
 
 
 ## Message types

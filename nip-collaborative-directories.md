@@ -8,7 +8,7 @@ Collaborative Directories
 
 This NIP defines **collaborative directories** on Nostr: shared knowledge bases where many authors publish entries about subjects within a named **namespace**, and each reader resolves a single canonical version through their personal **Web of Trust**.
 
-It introduces two new event kinds (`kind:30890` for directory entries, `kind:30891` for namespace definitions), three indexed tags, and a small set of trust rules added on top of standard NIP-01 addressable events. NIP-57 zap splits and NIP-54 merge requests are adopted unchanged.
+It introduces two new event kinds (`kind:30890` for directory entries, `kind:30891` for namespace definitions), three indexed tags, and a small set of trust rules added on top of standard NIP-01 addressable events. NIP-57 zap splits are adopted unchanged.
 
 ---
 
@@ -21,7 +21,7 @@ Existing Nostr primitives fall short of this:
 - [NIP-78](78.md), [NIP-99](99.md): single author per record. No collaboration.
 - [NIP-51](51.md): lists of references, not the primary data.
 - [NIP-72](72.md): communities with fixed moderators. No reader-personalization.
-- [NIP-54](54.md): multi-author addressable wikis, but resolution is "by some means" — undefined and not parameterized by trust.
+- [NIP-54](54.md): multi-author addressable wikis, but resolution enumerates non-normative options (reactions, relay lists, contact lists, `kind:10101` "Good wiki authors") without a parameterized algorithm or trust depth.
 
 **This NIP fills the gap.** One author (the namespace owner) defines a namespace and its rules. The rules state how deep into the Web of Trust edits are accepted — broadly for ontologies needing many contributors, narrowly for politically sensitive bodies of knowledge. Individual entries can tighten those rules further.
 
@@ -58,7 +58,7 @@ The owner is always at hop 0 of both graphs by definition. A pubkey is a **contr
 Given all `kind:30890` events with the same `(n, d)`:
 
 1. **All contributors within the rule compete as peers.** Newest `created_at` wins. Ties broken by lowest event id lexicographically.
-2. **The owner is a peer in normal editing**, but retains two important privileges: setting the namespace rules, and tightening any individual entry with `["follows", "0"]` or `["experts", "0"]` to restrict who can override it. To prevent contributors from squatting embarrassing slugs (e.g. an expert publishing a mocking entry for `<owner-pubkey>`), the owner can set `follows:0, experts:0` on the namespace, restricting contributions to themselves.
+2. **The owner is a peer in normal editing**, but retains the unique privilege of setting the namespace rules. Any contributor, including the owner, MAY tighten their own individual entry with `["follows", "0"]` or `["experts", "0"]` to restrict who can override that specific entry (see Per-entry tightening below). To prevent contributors from squatting embarrassing slugs (e.g. an expert publishing a mocking entry for `<owner-pubkey>`), the owner can set `follows:0, experts:0` on the namespace, restricting contributions to themselves.
 3. **Non-contributors** are shown as proposals, not as canonical content.
 4. **If no contributor has published**, the newest event by any author is shown with a clear "outside trust" indicator.
 
@@ -68,8 +68,10 @@ Smaller hop distance does not beat larger on its own — once both authors quali
 
 Any contributor MAY tighten the rules on their own entry by including:
 
-- `["experts", "0"]` — locks the entry at the expert hops up to the author's own hop. Experts deeper than the author's hop cannot override.
+- `["experts", "0"]` — locks the entry so that only contributors at the author's hop distance or closer (via the experts graph) can override it. Experts deeper than the author's hop cannot override.
 - `["follows", "0"]` — excludes the follow graph entirely for this entry, even if the namespace allows follows.
+
+The per-entry value is relative to the author's position in the trust graph, not an absolute hop count. If Bob is at hop 1 (via follows) and sets `["experts", "0"]`, only contributors at hop 1 or closer can override his entry. If the owner (hop 0) sets `["experts", "0"]`, only the owner can override.
 
 A per-entry value MUST be smaller than or equal to the namespace value; larger values are ignored. Omitting a per-entry parameter inherits the namespace value.
 
@@ -77,9 +79,11 @@ The effect: any contributor can be stricter than the namespace, never more permi
 
 ### Whose namespace definition is read?
 
-The active `kind:30891` is the one the client references (typically by `a`-tag style `30891:<owner-pubkey>:nips`). Only this event's `experts:N` and `follows:N` parameters control resolution.
+The active `kind:30891` is the one the client references (typically via an `naddr` pointing to `30891:<owner-pubkey>:nips`). Only this event's `experts:N` and `follows:N` parameters control resolution.
 
 Other pubkeys may publish their own `kind:30891` events for the same slug — those are alternate views, used only when the client switches to that owner.
+
+**Fallback when the active namespace definition is unreachable.** If the client's chosen `kind:30891` cannot be fetched, the client SHOULD fall back to the owner pubkey embedded in the `naddr` or application configuration, assume `experts:0, follows:0`, and allow the user to opt into a wider trust radius if desired.
 
 When traversing the **experts graph**, the client follows the chain hop-by-hop: hop 1 is the active owner's named experts; hop 2 is the named experts in each L1 expert's own `kind:30891` for this slug; etc.
 
@@ -155,7 +159,6 @@ Structured metadata lives in tags, not content. Unknown tags are ignored.
 | `title` | Display name |
 | `web` | Primary URL |
 | `git` | Source repository |
-| `status` | `active`, `beta`, `deprecated`, etc. |
 | `icon` | Logo URL |
 | `license` | SPDX identifier |
 | `version` | Current version |
@@ -176,7 +179,7 @@ Namespaces MAY define additional tags as convention.
 {"kinds": [30890], "#n": ["nips"]}
 ```
 
-> **Note on collision:** NIP-66 and NIP-87 also use `n`, but on different kinds. Relay filtering requires matching `kinds` and `#n` together, making the collision benign in practice.
+> **Note on collision:** NIP-66 and NIP-87 also use `n`, but on different kinds. Since relay queries on single-letter tags are always combined with a `kinds` filter, the collision is benign in practice. The same pattern applies to `e`, `a`, `d`, and other single-letter tags reused across many NIPs.
 
 ---
 
@@ -308,11 +311,13 @@ If Alice wants her entry to be the only canonical version for this slug, she set
 
 ---
 
-## Merge Requests
+## Deletion and Tombstoning
 
-NIP-54 merge requests (`kind:818`) work unchanged for this directory kind. They are a courtesy notification, not a gate: WoT resolution determines canonical content on its own.
+Standard [NIP-09](09.md) deletion requests apply to directory events. Because a `kind:30890` entry may have multiple authors for the same `d` tag, deleting one author's event does not remove the subject from the directory — another author's version remains visible.
 
-Clients MAY skip merge request support entirely.
+To suppress a specific author's contribution while leaving other versions intact, the author MAY publish a tombstone event: a `kind:30890` with the same `d` and `n` tags, empty `content`, and a `["t", "deleted"]` tag. Clients SHOULD hide entries carrying `["t", "deleted"]` from canonical and proposal views.
+
+A namespace owner wishing to remove a subject entirely from their namespace can tighten the namespace to `follows:0, experts:0` and publish a tombstone under their own key.
 
 ---
 
@@ -378,4 +383,4 @@ Namespace definitions:
 
 **Why no NIP-05 verification for namespaces?** Domain ownership doesn't prevent squatting. Namespaces aren't DNS names. Reputation emerges from WoT, not certificates.
 
-**Why is merge-request display optional?** WoT resolution determines canonical content. Merge requests are social signals, not gates.
+

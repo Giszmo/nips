@@ -88,7 +88,7 @@ If Alice later publishes with `["follows", "0"]`, her ceiling drops to `0 + 0 = 
 
 **Parameters:** A per-entry value larger than the namespace value is ignored (treated as the namespace default). The owner is always at hop 0, so `["experts", "0"]` on an owner entry means only the owner can win that slug.
 
-> **Rationale:** The inner circle defines the participation of the outer circle. A tightening by any contributor at hop k permanently lowers the ceiling until another contributor at hop ≤ k publishes a looser entry — or until the owner overrides via namespace-level tightening.
+> **Rationale:** The inner circle defines the participation of the outer circle. A tightening by any contributor raises the bar for everyone: their latest entry clamps the ceiling, and the global ceiling is the MIN across all contributors' latest entries. An omitted tightening means that contributor defaults to the namespace depth — there is no special override, not even for the owner.
 
 **Why not per-event instead of per-author-latest?** Each author's *latest* entry determines their current stance. If Bob publishes without tightening, then later publishes with it, his later position controls. If he later removes the tightening, the ceiling rises again (assuming no other contributor has it clamped lower). The global ceiling is dynamic: it reflects the current collective will of all authors who have published for this slug.
 
@@ -284,7 +284,7 @@ In `cool-nostr-apps`, Alice publishes a definitive entry for noStrudel and locks
 
 Even though the namespace allows `follows:3, experts:3`, Alice's tightening (`0 + 0 = 0`) drops the global ceiling to hop 0. Only Alice can win this slug; anyone else's entry becomes a proposal.
 
-If instead **Bob** (at hop 1 in Alice's follows) publishes with `["experts", "0"], ["follows", "0"]`, his ceiling is `1 + 0 = 1`. The global ceiling becomes `MIN(Alice's default=3, Bob's=1) = 1`. Alice (hop 0) and Bob (hop 1) compete; Carol (hop 2) is excluded even if she publishes newest. If Alice later publishes the same slug *without* tightening, her ceiling reverts to the namespace default (3), but Bob's `1` still clamps the global ceiling at `1`. Carol remains excluded until Bob also removes his tightening (or Alice overrides at the namespace level).
+If instead **Bob** (at hop 1 in Alice's follows) publishes with `["experts", "0"], ["follows", "0"]`, his ceiling is `1 + 0 = 1`. The global ceiling becomes `MIN(Alice's default=3, Bob's=1) = 1`. Alice (hop 0) and Bob (hop 1) compete; Carol (hop 2) is excluded even if she publishes newest. If Alice later publishes the same slug *without* tightening, her ceiling reverts to the namespace default (3), but Bob's `1` still clamps the global ceiling at `1`. Carol remains excluded until Bob also removes his tightening.
 
 ### Example 4: Zap splits
 

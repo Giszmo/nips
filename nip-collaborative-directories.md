@@ -47,7 +47,7 @@ Every namespace defines two parameters:
 - `follows:N` — the **follow graph** is traversed up to N hops from the namespace owner. Hop 0 is the owner. Hop 1 is their direct follows (kind-3 contacts). Hop 2 is follows of follows. Etc.
 - `experts:M` — an **explicit per-namespace expert list** is traversed up to M hops. Hop 0 is the owner. Hop 1 is the owner's named experts (`p` tags on the active `kind:30891`). Hop 2 is the experts in each of those L1 experts' own `kind:30891` events for this slug. Etc.
 
-**Invariant:** `follows ≤ experts`. The follow graph bootstraps a namespace cheaply but is a noisy approximation of expertise; trusting it deeper than the curated path inverts the quality signal.
+**Invariant:** `follows ≤ experts`. The follow graph bootstraps a namespace cheaply but is a noisy approximation of expertise; trusting it deeper than the curated path inverts the quality signal. If a namespace definition declares `follows > experts`, clients MUST clamp `follows` to `experts`.
 
 If `follows` is omitted from a declaration, it defaults to `0`.
 
@@ -57,18 +57,18 @@ The owner is always at hop 0 of both graphs by definition. A pubkey is a **contr
 
 Given all `kind:30890` events with the same `(n, d)`:
 
-1. **Determine the trust ceiling.** Each author's *latest* entry for this slug contributes a tightening value. The effective ceiling for the entire slug is the minimum of all authors' individual ceilings (see Per-entry tightening below). Authors at hop distance greater than this ceiling do not compete for this slug, regardless of `created_at`.
+1. **Determine the trust ceiling.** For each contributor who has published to this slug, the client MUST use that author's *latest* entry (highest `created_at` for the `(kind, pubkey, d)` triple) to read any tightening tags. The effective ceiling for the entire slug is the minimum of all contributors' individual ceilings (see Per-entry tightening below). Authors whose hop distance exceeds this ceiling MUST NOT compete for canonical selection.
 2. **Pick newest among the remainder.** Among all entries from contributors whose hop ≤ the effective ceiling, the one with the newest `created_at` wins. Ties broken by lowest event id lexicographically.
 3. Entries from contributors outside the effective ceiling are called **proposals** and SHOULD be surfaced separately if the client shows proposals.
 4. **The owner is a peer in normal editing**, but retains the unique privilege of setting the namespace rules. Any contributor, including the owner, MAY tighten their own individual entry with `["follows", "0"]` or `["experts", "0"]` to restrict the ceiling for this slug (see Per-entry tightening below). To prevent contributors from squatting embarrassing slugs (e.g. an expert publishing a mocking entry for `<owner-pubkey>`), the owner can set `follows:0, experts:0` on the namespace, restricting contributions to themselves.
-5. **Non-contributors** (outside the namespace's declared depth) are shown only as proposals, never as canonical content.
+5. **Non-contributors** (outside the namespace's declared depth) MUST be shown only as proposals, never as canonical content.
 6. **If no contributor has published** within the effective ceiling, the newest event by any contributor at all is shown; if there are no contributors either, the newest event by any author is shown with a clear "outside trust" indicator.
 
 Smaller hop distance does not beat larger on its own — once both authors qualify, newest wins. This avoids "who is more trusted" debates among equals. Per-entry tightening is the only mechanism that changes which authors are allowed to compete.
 
 ### Per-entry tightening
 
-Any contributor MAY include `["experts", "k"]` or `["follows", "k"]` on their `kind:30890` entry to lower the trust ceiling for this slug. The value is **relative** to the author's own hop distance in the corresponding graph:
+Any contributor MAY include both `["experts", "k"]` and `["follows", "k"]` on their `kind:30890` entry to lower the trust ceiling for this slug. The value is **relative** to the author's own hop distance in the *corresponding* graph: `["experts", "k"]` uses the author's hop in the **experts** graph; `["follows", "k"]` uses the author's hop in the **follows** graph. If an author is not reachable in that graph, the tag is ignored. A contributor MUST NOT tighten themselves out: an author whose `authorHop + k` result would exclude their own hop distance is treated as if they published no tightening for that graph.
 
 ```
 authorCeiling = max(0, authorHop + k)
@@ -288,24 +288,7 @@ If instead **Bob** (at hop 1 in Alice's follows) publishes with `["experts", "0"
 
 ### Example 4: Zap splits
 
-```jsonc
-{
-  "kind": 30890,
-  "pubkey": "<bob>",
-  "tags": [
-    ["d", "cool-nostr-apps/amethyst"],
-    ["n", "cool-nostr-apps"],
-    ["title", "Amethyst"],
-    ["zap", "<vitor>", "wss://...", "4"],
-    ["zap", "<bob>", "wss://...", "2"],
-    ["zap", "<alice>", "wss://...", "1"]
-  ],
-  "content": "...",
-  ...
-}
-```
-
-Zaps split: 57% to the project, 29% to the contributor (Bob), 14% to the curator (Alice).
+Entries MAY include NIP-57 `zap` splits, e.g. `["zap", "<vitor>", "wss://...", "4"], ["zap", "<bob>", "wss://...", "2"], ["zap", "<alice>", "wss://...", "1"]` to split zaps among project, contributor, and curator.
 
 ### Example 5: Resolution walkthrough
 
@@ -323,6 +306,17 @@ Active view: Alice's namespace `cool-nostr-apps` with `experts:3, follows:2`. Su
 Carol wins — newest among all who qualify. The owner's role is rule-setting, not editorial priority: Alice competes on the same terms as Bob, Carol, Eve, and Frank.
 
 If Alice wants her entry to be the only canonical version for this slug, she sets `["follows", "0"], ["experts", "0"]` on her own entry. If she wants the whole namespace to be hers alone, she sets `follows:0, experts:0` on the namespace definition.
+
+### Example 6: Dynamic ceiling — two contributors tighten differently
+
+Namespace `experts:3, follows:2`. Alice (hop 0), Bob (hop 1), Carol (hop 2), Dave (hop 3, not a contributor — beyond `follows:2`).
+
+1. Alice (no tightening, ceiling = 3) and Bob (`["follows", "0"]`, ceiling = 1) publish. Global ceiling = `MIN(3, 1) = 1`. Carol (hop 2) excluded. Alice and Bob compete.
+2. Carol publishes `["follows", "-1"]`. Ceiling = `max(0, 2 + (-1)) = 1`. Global ceiling = `MIN(3, 1, 1) = 1` — unchanged. Carol's tightening is redundant.
+3. Bob removes his tightening (publishes without it). Alice = 3, Bob = 3 (default), Carol = 1. Global ceiling = `MIN(3, 3, 1) = 1`. Ceiling stays at 1 — Carol (hop 2) still excluded.
+4. Carol also removes her tightening. Global ceiling = `MIN(3, 3, 3) = 3`. Now Carol can compete. Dave remains excluded by namespace depth.
+
+The ceiling follows the tightest active contributor. It rises only when the tightest contributor relaxes.
 
 ---
 
